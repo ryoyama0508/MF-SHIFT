@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月次シフト確認 | Ark Clinic</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7f6;color:#173831;font:16px/1.6 system-ui,sans-serif}main{max-width:1150px;margin:auto;padding:28px}header,section,footer{background:white;padding:20px 24px;margin-bottom:16px;border:1px solid #ccd9d5;border-radius:10px}h1,h2,p{margin:0 0 10px}h1{font-size:27px}h2{font-size:19px}label{display:inline-block;margin:4px 12px 4px 0}select,input,button{font:inherit;padding:5px;border:1px solid #9fb3ac;border-radius:5px}button{cursor:pointer;background:#eaf2ef}button:disabled{opacity:.45;cursor:default}#download{background:#16594b;color:white;padding:8px 18px}table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid #dee6e3;padding:6px}th{font-size:14px}.scroll{overflow:auto}.swatch{display:inline-block;width:14px;height:14px;border:1px solid #aaa;margin-right:5px}input[type=time]{width:115px}#error{color:#91331e}
+</style>
+<main><header><h1 id="title">月次シフト確認</h1><p id="summary" aria-live="polite"></p></header>
+<section><label>スタッフ <select id="staff"></select></label><label>MF登録名 <select id="identity"></select></label>
+<label><input type="checkbox" id="exclude">今月の対象外</label><p id="hint"></p><small id="saved"></small></section>
+<section><h2>勤務日の確認</h2><p>対象の日にチェックを入れ、勤務時間または非勤務を指定してください。「候補を採用」は各日の候補時間を使います。通常時刻が未設定の場合、候補の補完には10:00・19:00を使っています。</p>
+<label>表示 <select id="filter"></select></label><button id="pick">表示中をすべて選択</button> <button id="clear">選択を解除</button>
+<p><label>出勤 <input id="start" type="time" value="10:00"></label><label>退勤 <input id="end" type="time" value="19:00"></label><label>休憩開始 <input id="bs" type="time"></label><label>休憩終了 <input id="be" type="time"></label></p>
+<p><button id="apply">指定時間で勤務</button> <button id="suggest">候補を採用</button> <button id="off">非勤務にする</button></p><p role="alert" id="error"></p>
+<div class="scroll"><table><thead><tr><th>選択</th><th>日付</th><th>原本</th><th>判定・理由</th><th>勤務時間（休憩）</th></tr></thead><tbody id="days"></tbody></table></div></section>
+<footer><label><input type="checkbox" id="approved">対象者・日付・時間・非勤務の判定を確認しました</label>
+<button id="download">月次CSVをダウンロード</button></footer></main>
+<script>
+'use strict';
+const data=/*MONTH_DATA*/null;
+const el=id=>document.getElementById(id);
+const option=(select,label,value)=>select.add(new Option(label,value));
+const storageKey='mf-shift-MONTH_FINGERPRINT';
+function save(){
+ try{
+  localStorage.setItem(storageKey,JSON.stringify(data.staff));
+  el('saved').textContent='確認内容をこのブラウザに保存しました。';
+ }catch{el('saved').textContent='このブラウザでは途中保存できません。画面を閉じる前にCSVを保存してください。';}
+}
+try{
+ const saved=JSON.parse(localStorage.getItem(storageKey));
+ if(saved && saved.length===data.staff.length){
+  data.staff=saved;el('saved').textContent='前回の確認内容を復元しました。';
+ }
+}catch{}
+const person=()=>data.staff[Number(el('staff').value)];
+const selected=new Set();
+function source(day){return (day.raw || '空欄')+' '+(day.color || '塗りなし');}
+function visible(day){
+ const f=el('filter').value;
+ return f==='all' || (f==='pending' ? day.status==='要確認' : f===source(day));
+}
+function valid(t){
+ if(!t || !t.slice(0,2).every(v=>/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) || t[0]>=t[1])return false;
+ return (!t[2]&&!t[3]) || (t[2] && t[3] && t[0]<=t[2] && t[2]<t[3] && t[3]<=t[1]);
+}
+function summary(){
+ const active=data.staff.filter(s=>!s.excluded);
+ const working=active.filter(s=>s.days.some(d=>d.status==='勤務'));
+ const ids=working.map(s=>s.id);
+ const missing=ids.filter(id=>!id).length;
+ const assignedIds=ids.filter(Boolean);
+ const duplicates=assignedIds.length-new Set(assignedIds).size;
+ const days=active.flatMap(s=>s.days);
+ const pending=days.filter(d=>d.status==='要確認').length;
+ const count=days.filter(d=>d.status==='勤務').length;
+ el('summary').textContent='対象 '+active.length+'人 ／ 勤務 '+count+'件 ／ 要確認 '+pending+'日 ／ 勤務者のID未設定 '+missing+'人 ／ 重複ID '+duplicates+'件';
+ el('download').disabled=!!(pending||missing||duplicates||!count||!el('approved').checked);
+ for(const [i,s] of data.staff.entries()){
+  const pending=s.days.filter(d=>d.status==='要確認').length;
+  el('staff').options[i].textContent=s.name+'（'+s.column+'列・'+(s.excluded?'対象外':pending+'日要確認')+'）';
+ }
+}
+function render(){
+ const s=person(),body=el('days');body.replaceChildren();
+ for(const d of s.days.filter(visible)){
+  const row=body.insertRow(),check=document.createElement('input');check.type='checkbox';
+  check.setAttribute('aria-label',d.date);check.checked=selected.has(d);
+  check.onchange=()=>check.checked?selected.add(d):selected.delete(d);
+  row.insertCell().append(check);row.insertCell().textContent=d.date;
+  const src=row.insertCell(),chip=document.createElement('span');chip.className='swatch';chip.style.background=d.color||'white';
+  src.append(chip,(d.raw||'空欄')+' ('+d.addr+')');
+  row.insertCell().textContent=d.status+'・'+d.reason;
+  row.insertCell().textContent=d.times && d.status!=='非勤務' ? (d.status==='要確認'?'候補 ':'')+d.times[0]+'–'+d.times[1]+(d.times[2]?' ('+d.times.slice(2).join('–')+')':'') : '—';
+ }
+ summary();
+}
+function loadPerson(){
+ const s=person();selected.clear();el('error').textContent='';el('exclude').checked=!!s.excluded;
+ el('identity').value=s.id;const candidate=data.master.find(m=>m['スタッフID']===s.candidate);
+ el('hint').textContent=s.id?'スタッフID '+s.id:candidate?'原本の照合候補 '+candidate['スタッフ名']+'（MF登録名を選んで確定）':'勤務がある場合はMF登録名を選んでください。';
+ const f=el('filter');f.replaceChildren();option(f,'全日','all');option(f,'要確認のみ','pending');
+ for(const key of new Set(s.days.map(source)))option(f,key,key);
+ render();
+}
+function apply(mode){
+ const days=[...selected],times=['start','end','bs','be'].map(k=>el(k).value);
+ const message=!days.length?'対象の日を選択してください。':
+ mode==='work'&&!valid(times)?'勤務・休憩の時間範囲を確認してください。':
+ mode==='suggest'&&days.some(d=>!valid(d.times)||d.status==='非勤務')?'時間候補のある勤務日だけを選択してください。':'';
+ el('error').textContent=message;if(message)return;
+ for(const d of days){
+  d.status=mode==='off'?'非勤務':'勤務';d.reason='画面で指定';
+  if(mode==='work')d.times=times.slice();
+ }
+ el('approved').checked=false;selected.clear();save();render();
+}
+el('title').textContent='Ark Clinic　'+data.month+' 月次シフト確認';
+data.staff.forEach((s,i)=>option(el('staff'),s.name,i));
+option(el('identity'),'未設定','');
+data.master.forEach(m=>option(el('identity'),m['スタッフ名']+' ／ '+m['スタッフID'],m['スタッフID']));
+el('identity').onchange=()=>{person().id=el('identity').value;el('approved').checked=false;save();loadPerson();};
+el('exclude').onchange=()=>{person().excluded=el('exclude').checked;el('approved').checked=false;save();summary();};
+el('staff').onchange=loadPerson;el('filter').onchange=()=>{selected.clear();render();};
+el('pick').onclick=()=>{person().days.filter(visible).forEach(d=>selected.add(d));render();};
+el('clear').onclick=()=>{selected.clear();render();};
+el('apply').onclick=()=>apply('work');el('suggest').onclick=()=>apply('suggest');el('off').onclick=()=>apply('off');
+el('approved').onchange=summary;
+el('download').onclick=()=>{
+ const lines=[];
+ for(const s of data.staff.filter(s=>!s.excluded)){
+  for(const d of s.days.filter(d=>d.status==='勤務')){
+   if(!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(s.id)||!valid(d.times)){alert('IDまたは勤務時間が不正です。');return;}
+   lines.push([data.clinic,s.id,d.date,...d.times].join(','));
+  }
+ }
+ const header=Uint8Array.from(atob(data.header),c=>c.charCodeAt(0));
+ const url=URL.createObjectURL(new Blob([header,lines.join('\r\n')+'\r\n'],{type:'text/csv'}));
+ const a=document.createElement('a');a.href=url;a.download='medicalforce_'+data.month+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+if(data.staff.length)loadPerson();else el('download').disabled=true;
+</script></html>
