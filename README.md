@@ -35,10 +35,21 @@ npm test
 ./node_modules/.bin/tsx scripts/smoke-convert.ts 2026.12
 ```
 
+## 認証
+
+トップの前にパスワード画面があります。正解は環境変数 `APP_PASSWORD` です。
+
+```bash
+# ローカル
+cp .env.example .env.local
+# APP_PASSWORD=好きなパスワード に編集
+```
+
 ## Vercel へのデプロイ
 
 1. このリポジトリを GitHub に push
 2. [Vercel](https://vercel.com) で Import → Framework Preset は Next.js
-3. ビルドは `npm run build` のまま Deploy
-
-環境変数は当面不要です（認証は後から追加予定）。
+3. Project → Settings → Environment Variables に追加:
+   - Name: `APP_PASSWORD`
+   - Value: 決めたいパスワード
+4. ビルドは `npm run build` のまま Deploy
