@@ -25,12 +25,8 @@
 *.pem
 __pycache__/
 *.pyc
-/output/
-/2026年11月_実原本の検証結果/
-
 # clinic source workbooks (personal shift data — do not publish)
 *.xlsx
-!mf_shift_template.csv
 
 # debug
 npm-debug.log*
