@@ -122,25 +122,6 @@ export function ReviewClient() {
 
   if (!data) return <p className="text-[#4d635c]">読み込み中…</p>;
 
-  function resolveUnknown(r: PendingRow, mode: "work" | "off") {
-    if (!data) return;
-    const day = data.staff[r.staffIndex].days[r.dayIndex];
-    if (mode === "off") {
-      day.status = "非勤務";
-      day.reason = "画面で非勤務に確定";
-      day.times = null;
-    } else {
-      if (!validTimes(day.times)) {
-        alert("候補時刻がないため勤務にできません。非勤務にするか、対象外にしてください。");
-        return;
-      }
-      day.status = "勤務";
-      day.reason = "画面で勤務に確定";
-    }
-    setApproved(false);
-    persist(data);
-  }
-
   function applyDrawing(date: string, decision: "off" | "note_only") {
     if (!data) return;
     const daySlash = `${date.slice(0, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)}`;
@@ -342,14 +323,13 @@ export function ReviewClient() {
           <p className="mt-4 text-sm text-[#16594b]">意味不明な記号はありません。</p>
         ) : (
           <div className="mt-4 max-h-[420px] overflow-auto">
-            <table className="w-full min-w-[800px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="border-b border-[#dee6e3]">
                   <th className="py-2 pr-2">スタッフ</th>
                   <th className="py-2 pr-2">日付</th>
                   <th className="py-2 pr-2">原本の文字</th>
-                  <th className="py-2 pr-2">わからない理由</th>
-                  <th className="py-2">このマスの扱い</th>
+                  <th className="py-2">わからない理由</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,32 +339,8 @@ export function ReviewClient() {
                       {r.staff.name}（{r.staff.column}）
                     </td>
                     <td className="py-2 pr-2">{r.day.date}</td>
-                    <td className="py-2 pr-2">
-                      <span
-                        className="mr-1 inline-block h-3.5 w-3.5 border border-[#aaa]"
-                        style={{ background: r.day.color || "white" }}
-                      />
-                      {r.day.raw || "空欄"}
-                    </td>
-                    <td className="py-2 pr-2 text-[#91331e]">{r.day.reason}</td>
-                    <td className="py-2">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="rounded border border-[#9fb3ac] bg-white px-2 py-1 text-xs"
-                          onClick={() => resolveUnknown(r, "work")}
-                        >
-                          勤務にする
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded border border-[#9fb3ac] bg-white px-2 py-1 text-xs"
-                          onClick={() => resolveUnknown(r, "off")}
-                        >
-                          非勤務にする
-                        </button>
-                      </div>
-                    </td>
+                    <td className="py-2 pr-2">{r.day.raw || "空欄"}</td>
+                    <td className="py-2 text-[#91331e]">{r.day.reason}</td>
                   </tr>
                 ))}
               </tbody>
